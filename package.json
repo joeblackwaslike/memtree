@@ -1,7 +1,9 @@
 {
   "name": "ctx-tree",
   "private": true,
-  "workspaces": ["mcp"],
+  "workspaces": [
+    "mcp"
+  ],
   "scripts": {
     "build": "bun run --filter @ctx-tree/mcp build",
     "test": "bun test --filter @ctx-tree/mcp",
@@ -9,5 +11,6 @@
   },
   "dependencies": {
     "@joeblackwaslike2/mcp-exec": "^0.3.0"
-  }
+  },
+  "license": "MIT"
 }

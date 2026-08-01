@@ -10,7 +10,7 @@
 
 *ctx-tree intercepts every Claude Code tool call — native and MCP — and routes content through a persistent SQLite graph. Claude gets compact node references instead of raw data. 95–99% context reduction. Knowledge accumulates across sessions.*
 
-[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Linux-lightgrey)](#development)
 [![Bun ≥1.1](https://img.shields.io/badge/requires-Bun%20%E2%89%A51.1-f472b6)](https://bun.sh)
 [![Built on mcp-exec](https://img.shields.io/badge/built%20on-mcp--exec-orange)](https://github.com/joeblackwaslike/mcp-exec)
