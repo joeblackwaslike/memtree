@@ -47,6 +47,11 @@ describe('applyBudget', () => {
     expect(result.parts[0]).toBe('x: short preview');
   });
 
+  test('outline format falls back to content when item.outline is not provided', () => {
+    const result = applyBudget([{ id: 'x', content: 'body only, no outline' }], 500, 'outline');
+    expect(result.parts[0]).toBe('body only, no outline');
+  });
+
   test('marks items with sourceTruncated as truncated in the manifest', () => {
     const result = applyBudget([{ id: 'x', content: LONG(10), sourceTruncated: true }], 500, 'raw');
     expect(result.manifest.truncated).toEqual(['x']);
