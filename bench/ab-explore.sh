@@ -5,6 +5,11 @@
 # Usage: bench/ab-explore.sh <target-repo-path> <output-dir>
 #
 # Requires: claude CLI on PATH, TARGET_REPO checked out locally.
+# TARGET_REPO must be shaped like the original run's target (cc-vscode-ext) —
+# an entry point, IPC/MessageBroker layer, a process manager that spawns a
+# Claude process, and a webview UI — since bench/task-prompt.md's four topics
+# assume that architecture. Pointing this at an unrelated repo wastes real,
+# billed API cost on a meaningless run.
 # Runs two full `claude -p` sessions against TARGET_REPO — each makes real,
 # billed API calls. Do not run this in a loop or automated pipeline without
 # reviewing cost first (the original pair cost ~$3.79 combined).
