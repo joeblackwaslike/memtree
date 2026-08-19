@@ -155,4 +155,24 @@ export class Greeter {
     expect(meta.chunking).toBe('treesitter');
     expect(meta.chunkCount).toBeGreaterThan(1);
   });
+
+  test('caps returned content within budget_tokens even for a single oversized chunk', async () => {
+    const filePath = join(FIXTURE_DIR, 'big-class.ts');
+    const methods = Array.from({ length: 60 }, (_, i) => `  method${i}() { return ${i}; }`).join('\n');
+    writeFileSync(filePath, `export class Big {\n${methods}\n}\n`);
+    const result = await ctxTreeRead(store, cfg, { path: filePath, budget_tokens: 100 });
+    expect(result.content.length).toBeLessThanOrEqual(100 * 4);
+  });
+
+  test('stores full chunk content in the graph even when the returned excerpt is truncated', async () => {
+    const filePath = join(FIXTURE_DIR, 'big-class-2.ts');
+    const methods = Array.from({ length: 60 }, (_, i) => `  method${i}() { return ${i}; }`).join('\n');
+    const fullSource = `export class Big2 {\n${methods}\n}\n`;
+    writeFileSync(filePath, fullSource);
+    await ctxTreeRead(store, cfg, { path: filePath, budget_tokens: 100 });
+    const stored = db.query(
+      "SELECT content FROM nodes WHERE kind='file_chunk' AND json_extract(metadata,'$.is_file_root') IS NULL LIMIT 1"
+    ).get() as { content: string };
+    expect(stored.content.length).toBeGreaterThan(100 * 4);
+  });
 });

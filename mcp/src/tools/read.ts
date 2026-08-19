@@ -6,6 +6,7 @@ import type { StoreBackend } from '../store/index.js';
 import type { CtxTreeConfig } from '../store/types.js';
 import { shouldDropPath } from '../redaction';
 import { McpError, ErrorCode } from '@modelcontextprotocol/sdk/types.js';
+import { applyBudget, type BudgetItem } from './budget.js';
 
 export interface ReadParams {
   path: string;
@@ -25,10 +26,6 @@ interface Chunk {
   endLine: number;
   content: string;
   symbolName: string;
-}
-
-function estimateTokens(text: string): number {
-  return Math.ceil(text.length / 4);
 }
 
 function windowChunk(lines: string[], windowSize = 200): Chunk[] {
@@ -200,16 +197,9 @@ export async function ctxTreeRead(
     chunks = chunks.filter(c => c.startLine <= end1 && c.endLine >= start1);
   }
 
-  const budget = budget_tokens;
-  let used = 0;
-  const included: Chunk[] = [];
-  for (const [i, chunk] of chunks.entries()) {
-    const tokens = estimateTokens(chunk.content);
-    // Always include at least the first chunk so callers get some content.
-    if (i > 0 && used + tokens > budget) break;
-    included.push(chunk);
-    used += tokens;
-  }
+  const chunkItems: BudgetItem[] = chunks.map((chunk, i) => ({ id: String(i), content: chunk.content }));
+  const { parts, manifest } = applyBudget(chunkItems, budget_tokens);
+  const included: Chunk[] = manifest.included.map(id => chunks[Number(id)]);
 
   // Get or create the file root node (navigation anchor; parent of all per-chunk nodes).
   const fileRootUri = `file://${path}`;
@@ -280,6 +270,6 @@ export async function ctxTreeRead(
     nodeIds.push(nodeId);
   }
 
-  const content = included.map(c => c.content).join('\n\n');
+  const content = parts.join('\n\n');
   return { nodeIds, content, truncated, chunking };
 }

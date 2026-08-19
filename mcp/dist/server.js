@@ -34718,10 +34718,56 @@ function shouldDropPath(filePath, extraGlobs = []) {
   return import_micromatch.default.isMatch(filePath, allGlobs) || import_micromatch.default.isMatch(basename, allGlobs);
 }
 
-// src/tools/read.ts
+// src/tools/budget.ts
 function estimateTokens(text) {
   return Math.ceil(text.length / 4);
 }
+var MIN_BUDGET_FOR_TRUNCATION = 50;
+function applyBudget(items, budgetTokens, format = "raw") {
+  let budget = budgetTokens;
+  const included = [];
+  const dropped = [];
+  const truncated = [];
+  const summary_substituted = [];
+  const parts2 = [];
+  for (const item of items) {
+    let text = format === "outline" && item.outline !== undefined ? item.outline : item.content;
+    const usesSummary = format === "mixed" && !!item.summary && item.summary.length < item.content.length;
+    if (usesSummary) {
+      text = item.summary;
+      summary_substituted.push(item.id);
+    }
+    const tokens = estimateTokens(text);
+    if (tokens > budget) {
+      if (budget < MIN_BUDGET_FOR_TRUNCATION) {
+        if (format === "mixed" && !item.summary) {
+          dropped.push({ id: item.id, reason: "over_budget_no_summary" });
+        } else {
+          dropped.push({ id: item.id, reason: "over_budget" });
+        }
+        continue;
+      }
+      const chars = budget * 4;
+      text = text.slice(0, chars);
+    }
+    budget -= estimateTokens(text);
+    included.push(item.id);
+    if (item.sourceTruncated)
+      truncated.push(item.id);
+    parts2.push(text);
+  }
+  return {
+    parts: parts2,
+    manifest: {
+      included,
+      dropped,
+      truncated,
+      ...summary_substituted.length ? { summary_substituted } : {}
+    }
+  };
+}
+
+// src/tools/read.ts
 function windowChunk(lines, windowSize = 200) {
   const chunks = [];
   for (let i3 = 0;i3 < lines.length; i3 += windowSize) {
@@ -34869,16 +34915,9 @@ async function ctxTreeRead(store, config2, params) {
     const end1 = lines[1] + 1;
     chunks = chunks.filter((c2) => c2.startLine <= end1 && c2.endLine >= start1);
   }
-  const budget = budget_tokens;
-  let used = 0;
-  const included = [];
-  for (const [i3, chunk] of chunks.entries()) {
-    const tokens = estimateTokens(chunk.content);
-    if (i3 > 0 && used + tokens > budget)
-      break;
-    included.push(chunk);
-    used += tokens;
-  }
+  const chunkItems = chunks.map((chunk, i3) => ({ id: String(i3), content: chunk.content }));
+  const { parts: parts2, manifest } = applyBudget(chunkItems, budget_tokens);
+  const included = manifest.included.map((id) => chunks[Number(id)]);
   const fileRootUri = `file://${path4}`;
   let fileRootId;
   const cachedRoot = await store.getNodeBySourceUri(fileRootUri);
@@ -34940,7 +34979,7 @@ async function ctxTreeRead(store, config2, params) {
       await store.insertEdge({ src_id: nodeId, dst_id: cached2.id, kind: "supersedes" });
     nodeIds.push(nodeId);
   }
-  const content = included.map((c2) => c2.content).join(`
+  const content = parts2.join(`
 
 `);
   return { nodeIds, content, truncated, chunking };
@@ -35046,55 +35085,6 @@ async function ctxTreeGrep(store, config2, params) {
   return { nodeId, matches };
 }
 
-// src/tools/budget.ts
-function estimateTokens2(text) {
-  return Math.ceil(text.length / 4);
-}
-var MIN_BUDGET_FOR_TRUNCATION = 50;
-function applyBudget(items, budgetTokens, format = "raw") {
-  let budget = budgetTokens;
-  const included = [];
-  const dropped = [];
-  const truncated = [];
-  const summary_substituted = [];
-  const parts2 = [];
-  for (const item of items) {
-    let text = format === "outline" && item.outline !== undefined ? item.outline : item.content;
-    const usesSummary = format === "mixed" && !!item.summary && item.summary.length < item.content.length;
-    if (usesSummary) {
-      text = item.summary;
-      summary_substituted.push(item.id);
-    }
-    const tokens = estimateTokens2(text);
-    if (tokens > budget) {
-      if (budget < MIN_BUDGET_FOR_TRUNCATION) {
-        if (format === "mixed" && !item.summary) {
-          dropped.push({ id: item.id, reason: "over_budget_no_summary" });
-        } else {
-          dropped.push({ id: item.id, reason: "over_budget" });
-        }
-        continue;
-      }
-      const chars = budget * 4;
-      text = text.slice(0, chars);
-    }
-    budget -= estimateTokens2(text);
-    included.push(item.id);
-    if (item.sourceTruncated)
-      truncated.push(item.id);
-    parts2.push(text);
-  }
-  return {
-    parts: parts2,
-    manifest: {
-      included,
-      dropped,
-      truncated,
-      ...summary_substituted.length ? { summary_substituted } : {}
-    }
-  };
-}
-
 // src/tools/compose.ts
 function scoreNode(node, graphDistance, queryRank, hasQuery) {
   const wDist = 0.7;
@@ -35196,7 +35186,7 @@ function stripTags(s4) {
 function decodeEntities(s4) {
   return s4.replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&nbsp;/g, " ").replace(/&#(\d+);/g, (_3, n4) => String.fromCharCode(Number(n4)));
 }
-function estimateTokens3(text) {
+function estimateTokens2(text) {
   return Math.ceil(text.length / 4);
 }
 var CACHE_TTL_MS = 60 * 60 * 1000;
@@ -35280,7 +35270,7 @@ async function ctxTreeBrowse(store, _config, params) {
   return { nodeId, url, title, description, headings, content, truncated, cached: false };
 }
 function budgetContent(text, budget) {
-  if (estimateTokens3(text) <= budget)
+  if (estimateTokens2(text) <= budget)
     return { text, truncated: false };
   const charBudget = budget * 4;
   return { text: text.slice(0, charBudget), truncated: true };
