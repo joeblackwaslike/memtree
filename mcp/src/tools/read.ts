@@ -272,7 +272,7 @@ export async function ctxTreeRead(
       mtime,
       truncated: truncated ? 1 : 0,
       original_bytes: originalBytes,
-      metadata: JSON.stringify({ filePath: path, chunking, symbolName: chunk.symbolName }),
+      metadata: JSON.stringify({ filePath: path, chunking, symbolName: chunk.symbolName, chunkCount: chunks.length }),
     });
 
     if (cached) await store.insertEdge({ src_id: nodeId, dst_id: cached.id, kind: 'supersedes' });
