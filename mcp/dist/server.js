@@ -34992,7 +34992,7 @@ async function ctxTreeRead(store, config2, params) {
 import { spawnSync } from "child_process";
 import { createHash as createHash3 } from "crypto";
 async function ctxTreeGrep(store, config2, params) {
-  const { pattern, path: path4 = ".", caseInsensitive, fileGlob, maxCount = 500 } = params;
+  const { pattern, path: path4 = ".", caseInsensitive, fileGlob, maxCount = 500, budget_tokens = 2000 } = params;
   const pathDenylistExtra = config2.capture.pathDenylistExtra ?? [];
   if (shouldDropPath(path4, pathDenylistExtra)) {
     throw new Error(`Path rejected by denylist: ${path4}`);
@@ -35085,7 +35085,8 @@ async function ctxTreeGrep(store, config2, params) {
       });
     }
   }
-  return { nodeId, matches };
+  const { parts: budgetedMatches } = applyBudget(matches.map((line, i3) => ({ id: String(i3), content: line })), budget_tokens);
+  return { nodeId, matches: budgetedMatches };
 }
 
 // src/tools/compose.ts
