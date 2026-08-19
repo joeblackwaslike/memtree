@@ -1,6 +1,7 @@
 import { spawnSync } from 'child_process';
 import { createHash } from 'crypto';
 import { ulid } from 'ulid';
+import { McpError, ErrorCode } from '@modelcontextprotocol/sdk/types.js';
 import type { StoreBackend } from '../store/index.js';
 import type { CtxTreeConfig } from '../store/types.js';
 import { shouldDropPath } from '../redaction';
@@ -27,6 +28,11 @@ export async function ctxTreeGrep(
   params: GrepParams
 ): Promise<GrepResult> {
   const { pattern, path = '.', caseInsensitive, fileGlob, maxCount = 500, budget_tokens = 2000 } = params;
+
+  if (budget_tokens <= 0) {
+    throw new McpError(ErrorCode.InvalidParams, `budget_tokens must be positive, got ${budget_tokens}`);
+  }
+
   const pathDenylistExtra = config.capture.pathDenylistExtra ?? [];
 
   if (shouldDropPath(path, pathDenylistExtra)) {

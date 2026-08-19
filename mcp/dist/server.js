@@ -34993,6 +34993,9 @@ import { spawnSync } from "child_process";
 import { createHash as createHash3 } from "crypto";
 async function ctxTreeGrep(store, config2, params) {
   const { pattern, path: path4 = ".", caseInsensitive, fileGlob, maxCount = 500, budget_tokens = 2000 } = params;
+  if (budget_tokens <= 0) {
+    throw new McpError(ErrorCode.InvalidParams, `budget_tokens must be positive, got ${budget_tokens}`);
+  }
   const pathDenylistExtra = config2.capture.pathDenylistExtra ?? [];
   if (shouldDropPath(path4, pathDenylistExtra)) {
     throw new Error(`Path rejected by denylist: ${path4}`);

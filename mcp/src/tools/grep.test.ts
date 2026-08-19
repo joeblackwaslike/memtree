@@ -87,4 +87,12 @@ describe('ctxTreeGrep', () => {
     const approxTokens = Math.ceil(result.matches.join('\n').length / 4);
     expect(approxTokens).toBeLessThanOrEqual(60);
   });
+
+  test('rejects non-positive budget_tokens', async () => {
+    await expect(ctxTreeGrep(store, DEFAULT_CONFIG, {
+      pattern: 'doThing',
+      path: FIXTURE_DIR,
+      budget_tokens: 0,
+    })).rejects.toThrow('budget_tokens must be positive');
+  });
 });
