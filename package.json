@@ -6,7 +6,7 @@
   ],
   "scripts": {
     "build": "bun run --filter @ctx-tree/mcp build",
-    "test": "bun test --filter @ctx-tree/mcp",
+    "test": "bun test",
     "dev": "bun run --filter @ctx-tree/mcp dev"
   },
   "dependencies": {
