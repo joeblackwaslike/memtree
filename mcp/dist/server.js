@@ -43850,7 +43850,8 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
           pattern: { type: "string", description: "Regex pattern to search" },
           path: { type: "string", description: "Path to search within" },
           case_insensitive: { type: "boolean", description: "Case-insensitive search" },
-          file_glob: { type: "string", description: "File glob filter" }
+          file_glob: { type: "string", description: "File glob filter" },
+          budget_tokens: { type: "number", description: "Token budget for output (default 2000)" }
         },
         required: ["pattern"]
       }
@@ -43981,7 +43982,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         return { content: [{ type: "text", text: result.content }] };
       }
       case "ctx_tree_grep": {
-        const { pattern, path: path9, case_insensitive, file_glob } = args2;
+        const { pattern, path: path9, case_insensitive, file_glob, budget_tokens } = args2;
         if (typeof pattern !== "string")
           throw new McpError(ErrorCode.InvalidParams, '"pattern" is required and must be a string');
         if (!rgAvailable)
@@ -43990,7 +43991,8 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           pattern,
           path: path9,
           caseInsensitive: case_insensitive,
-          fileGlob: file_glob
+          fileGlob: file_glob,
+          budget_tokens
         });
         return { content: [{ type: "text", text: result.matches.join(`
 `) }] };
