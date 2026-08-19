@@ -34873,6 +34873,9 @@ async function treeSitterChunk(source, lang) {
 }
 async function ctxTreeRead(store, config2, params) {
   const { path: path4, lines, budget_tokens = 2000 } = params;
+  if (budget_tokens <= 0) {
+    throw new McpError(ErrorCode.InvalidParams, `budget_tokens must be positive, got ${budget_tokens}`);
+  }
   if (shouldDropPath(path4, config2.capture.pathDenylistExtra ?? [])) {
     throw new Error(`Path rejected by denylist: ${path4}`);
   }

@@ -175,4 +175,11 @@ export class Greeter {
     ).get() as { content: string };
     expect(stored.content.length).toBeGreaterThan(100 * 4);
   });
+
+  test('rejects non-positive budget_tokens', async () => {
+    const filePath = join(FIXTURE_DIR, 'any.ts');
+    writeFileSync(filePath, 'export const x = 1;\n');
+    await expect(ctxTreeRead(store, cfg, { path: filePath, budget_tokens: 0 }))
+      .rejects.toThrow('budget_tokens must be positive');
+  });
 });

@@ -148,6 +148,10 @@ export async function ctxTreeRead(
 ): Promise<ReadResult> {
   const { path, lines, budget_tokens = 2000 } = params;
 
+  if (budget_tokens <= 0) {
+    throw new McpError(ErrorCode.InvalidParams, `budget_tokens must be positive, got ${budget_tokens}`);
+  }
+
   if (shouldDropPath(path, config.capture.pathDenylistExtra ?? [])) {
     throw new Error(`Path rejected by denylist: ${path}`);
   }
