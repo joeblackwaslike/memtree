@@ -35046,10 +35046,56 @@ async function ctxTreeGrep(store, config2, params) {
   return { nodeId, matches };
 }
 
-// src/tools/compose.ts
+// src/tools/budget.ts
 function estimateTokens2(text) {
   return Math.ceil(text.length / 4);
 }
+var MIN_BUDGET_FOR_TRUNCATION = 50;
+function applyBudget(items, budgetTokens, format = "raw") {
+  let budget = budgetTokens;
+  const included = [];
+  const dropped = [];
+  const truncated = [];
+  const summary_substituted = [];
+  const parts2 = [];
+  for (const item of items) {
+    let text = format === "outline" && item.outline !== undefined ? item.outline : item.content;
+    const usesSummary = format === "mixed" && !!item.summary && item.summary.length < item.content.length;
+    if (usesSummary) {
+      text = item.summary;
+      summary_substituted.push(item.id);
+    }
+    const tokens = estimateTokens2(text);
+    if (tokens > budget) {
+      if (budget < MIN_BUDGET_FOR_TRUNCATION) {
+        if (format === "mixed" && !item.summary) {
+          dropped.push({ id: item.id, reason: "over_budget_no_summary" });
+        } else {
+          dropped.push({ id: item.id, reason: "over_budget" });
+        }
+        continue;
+      }
+      const chars = budget * 4;
+      text = text.slice(0, chars);
+    }
+    budget -= estimateTokens2(text);
+    included.push(item.id);
+    if (item.sourceTruncated)
+      truncated.push(item.id);
+    parts2.push(text);
+  }
+  return {
+    parts: parts2,
+    manifest: {
+      included,
+      dropped,
+      truncated,
+      ...summary_substituted.length ? { summary_substituted } : {}
+    }
+  };
+}
+
+// src/tools/compose.ts
 function scoreNode(node, graphDistance, queryRank, hasQuery) {
   const wDist = 0.7;
   const wRecency = 0.3;
@@ -35080,51 +35126,36 @@ async function ctxTreeCompose(store, params) {
     score: scoreNode(node, distanceMap.get(node.id) ?? 0, ftsRanks.get(node.id) ?? 0, !!query)
   }));
   scored.sort((a2, b4) => b4.score - a2.score);
-  let budget = budget_tokens;
-  const included = [];
-  const dropped = [];
-  const truncated = [];
-  const summary_substituted = [];
-  const parts2 = [];
+  const preDropped = [];
+  const items = [];
   for (const { node } of scored) {
     if (node.status === "superseded") {
-      dropped.push({ id: node.id, reason: "superseded" });
+      preDropped.push({ id: node.id, reason: "superseded" });
       continue;
     }
     if (node.status === "pruned") {
-      dropped.push({ id: node.id, reason: "pruned" });
+      preDropped.push({ id: node.id, reason: "pruned" });
       continue;
     }
-    let text = format === "outline" ? formatOutline(node) : node.content;
-    const usesSummary = format === "mixed" && node.summary && node.summary.length < node.content.length;
-    if (usesSummary) {
-      text = node.summary;
-      summary_substituted.push(node.id);
-    }
-    const tokens = estimateTokens2(text);
-    if (tokens > budget) {
-      if (budget < 50) {
-        if (format === "mixed" && !node.summary) {
-          dropped.push({ id: node.id, reason: "over_budget_no_summary" });
-        } else {
-          dropped.push({ id: node.id, reason: "over_budget" });
-        }
-        continue;
-      }
-      const chars = budget * 4;
-      text = text.slice(0, chars);
-    }
-    budget -= estimateTokens2(text);
-    included.push(node.id);
-    if (node.truncated === 1)
-      truncated.push(node.id);
-    parts2.push(text);
+    items.push({
+      id: node.id,
+      content: node.content,
+      summary: node.summary ?? undefined,
+      outline: format === "outline" ? formatOutline(node) : undefined,
+      sourceTruncated: node.truncated === 1
+    });
   }
+  const { parts: parts2, manifest } = applyBudget(items, budget_tokens, format);
   return {
     content: parts2.join(`
 
 `),
-    manifest: { included, dropped, truncated, ...summary_substituted.length ? { summary_substituted } : {} }
+    manifest: {
+      included: manifest.included,
+      dropped: [...preDropped, ...manifest.dropped],
+      truncated: manifest.truncated,
+      ...manifest.summary_substituted ? { summary_substituted: manifest.summary_substituted } : {}
+    }
   };
 }
 

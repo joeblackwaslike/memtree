@@ -1,5 +1,6 @@
 import type { StoreBackend } from '../store/index.js';
 import type { CtxTreeNode, ComposeManifest } from '../store/types.js';
+import { applyBudget, type BudgetItem } from './budget.js';
 
 export interface ComposeParams {
   node_ids: string[];
@@ -12,10 +13,6 @@ export interface ComposeParams {
 export interface ComposeResult {
   content: string;
   manifest: ComposeManifest;
-}
-
-function estimateTokens(text: string): number {
-  return Math.ceil(text.length / 4);
 }
 
 function scoreNode(
@@ -70,52 +67,35 @@ export async function ctxTreeCompose(
   }));
   scored.sort((a, b) => b.score - a.score);
 
-  let budget = budget_tokens;
-  const included: string[] = [];
-  const dropped: ComposeManifest['dropped'] = [];
-  const truncated: string[] = [];
-  const summary_substituted: string[] = [];
-  const parts: string[] = [];
-
+  const preDropped: ComposeManifest['dropped'] = [];
+  const items: BudgetItem[] = [];
   for (const { node } of scored) {
     if (node.status === 'superseded') {
-      dropped.push({ id: node.id, reason: 'superseded' });
+      preDropped.push({ id: node.id, reason: 'superseded' });
       continue;
     }
     if (node.status === 'pruned') {
-      dropped.push({ id: node.id, reason: 'pruned' });
+      preDropped.push({ id: node.id, reason: 'pruned' });
       continue;
     }
-
-    let text = format === 'outline' ? formatOutline(node) : node.content;
-    const usesSummary = format === 'mixed' && node.summary && node.summary.length < node.content.length;
-    if (usesSummary) {
-      text = node.summary!;
-      summary_substituted.push(node.id);
-    }
-
-    const tokens = estimateTokens(text);
-    if (tokens > budget) {
-      if (budget < 50) {
-        // mixed format: no summary available → specific drop reason
-        if (format === 'mixed' && !node.summary) {
-          dropped.push({ id: node.id, reason: 'over_budget_no_summary' });
-        } else {
-          dropped.push({ id: node.id, reason: 'over_budget' });
-        }
-        continue;
-      }
-      const chars = budget * 4;
-      text = text.slice(0, chars);
-    }
-    budget -= estimateTokens(text);
-    included.push(node.id);
-    if (node.truncated === 1) truncated.push(node.id);
-    parts.push(text);
+    items.push({
+      id: node.id,
+      content: node.content,
+      summary: node.summary ?? undefined,
+      outline: format === 'outline' ? formatOutline(node) : undefined,
+      sourceTruncated: node.truncated === 1,
+    });
   }
+
+  const { parts, manifest } = applyBudget(items, budget_tokens, format);
 
   return {
     content: parts.join('\n\n'),
-    manifest: { included, dropped, truncated, ...(summary_substituted.length ? { summary_substituted } : {}) },
+    manifest: {
+      included: manifest.included,
+      dropped: [...preDropped, ...manifest.dropped],
+      truncated: manifest.truncated,
+      ...(manifest.summary_substituted ? { summary_substituted: manifest.summary_substituted } : {}),
+    },
   };
 }
