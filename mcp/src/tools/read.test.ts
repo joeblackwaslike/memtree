@@ -98,6 +98,17 @@ describe('ctxTreeRead', () => {
     expect(result.content).not.toContain('BLOCK_A');
   });
 
+  test('returns the requested line range even when it falls late inside an oversized chunk under a tight budget', async () => {
+    const filePath = join(FIXTURE_DIR, 'big-class-ranged.ts');
+    const methods = Array.from({ length: 60 }, (_, i) => `  method${i}() { return ${i}; }`).join('\n');
+    writeFileSync(filePath, `export class Big3 {\n${methods}\n}\n`);
+    // 0-based line 60 is "  method59() { return 59; }" — deep inside the single oversized
+    // export_statement chunk. A budget this small only fits a handful of lines from wherever
+    // budgeting starts, so this fails if truncation still slices from the chunk's beginning.
+    const result = await ctxTreeRead(store, cfg, { path: filePath, lines: [60, 60], budget_tokens: 50 });
+    expect(result.content).toContain('method59');
+  });
+
   test('falls back to window chunking for unknown file type', async () => {
     const filePath = join(FIXTURE_DIR, 'data.xyz');
     writeFileSync(filePath, Array(210).fill('x').join('\n'));

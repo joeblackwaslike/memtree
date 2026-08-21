@@ -55,7 +55,7 @@ if (toolName === 'read') {
       : '';
     deny(
       `Use ctx_tree_read instead of Read for "${filePath}".`,
-      `Call: ctx_tree_read({ path: ${JSON.stringify(filePath)}${extra} })\n\nReturns content up to budget_tokens (default 2000), truncating large symbols to fit — pass a larger budget_tokens for more. Also symbol-chunks the file and stores nodes (full, untruncated content) for the chunks that fit the budget, returning nodeIds you can pass to ctx_tree_neighbors to find related code.`,
+      `Call: ctx_tree_read({ path: ${JSON.stringify(filePath)}${extra} })\n\nReturns content up to budget_tokens (default 2000), truncating large symbols to fit — pass a larger budget_tokens for more. Also symbol-chunks the file and stores nodes (full, untruncated content) for the chunks it returns, returning nodeIds you can pass to ctx_tree_neighbors to find related code.`,
     );
   }
 }

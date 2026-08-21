@@ -194,14 +194,24 @@ export async function ctxTreeRead(
     chunking = 'window';
   }
 
+  let lineRange: { start1: number; end1: number } | undefined;
   if (lines) {
     // Schema advertises 0-based lines; internal chunks use 1-based line numbers.
-    const start1 = lines[0] + 1;
-    const end1 = lines[1] + 1;
-    chunks = chunks.filter(c => c.startLine <= end1 && c.endLine >= start1);
+    lineRange = { start1: lines[0] + 1, end1: lines[1] + 1 };
+    chunks = chunks.filter(c => c.startLine <= lineRange!.end1 && c.endLine >= lineRange!.start1);
   }
 
-  const chunkItems: BudgetItem[] = chunks.map((chunk, i) => ({ id: String(i), content: chunk.content }));
+  // When a line range is requested, budget only the slice of each chunk that actually
+  // overlaps it — otherwise budget truncation (which always slices from the start of the
+  // text it's given) can cut a large chunk before ever reaching a late-lying requested range.
+  function budgetableContent(chunk: Chunk): string {
+    if (!lineRange) return chunk.content;
+    const from = Math.max(lineRange.start1, chunk.startLine);
+    const to = Math.min(lineRange.end1, chunk.endLine);
+    return chunk.content.split('\n').slice(from - chunk.startLine, to - chunk.startLine + 1).join('\n');
+  }
+
+  const chunkItems: BudgetItem[] = chunks.map((chunk, i) => ({ id: String(i), content: budgetableContent(chunk) }));
   const { parts, manifest } = applyBudget(chunkItems, budget_tokens);
   const included: Chunk[] = manifest.included.map(id => chunks[Number(id)]);
 

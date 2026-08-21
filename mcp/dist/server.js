@@ -34913,12 +34913,21 @@ async function ctxTreeRead(store, config2, params) {
 `));
     chunking = "window";
   }
+  let lineRange;
   if (lines) {
-    const start1 = lines[0] + 1;
-    const end1 = lines[1] + 1;
-    chunks = chunks.filter((c2) => c2.startLine <= end1 && c2.endLine >= start1);
+    lineRange = { start1: lines[0] + 1, end1: lines[1] + 1 };
+    chunks = chunks.filter((c2) => c2.startLine <= lineRange.end1 && c2.endLine >= lineRange.start1);
   }
-  const chunkItems = chunks.map((chunk, i3) => ({ id: String(i3), content: chunk.content }));
+  function budgetableContent(chunk) {
+    if (!lineRange)
+      return chunk.content;
+    const from = Math.max(lineRange.start1, chunk.startLine);
+    const to = Math.min(lineRange.end1, chunk.endLine);
+    return chunk.content.split(`
+`).slice(from - chunk.startLine, to - chunk.startLine + 1).join(`
+`);
+  }
+  const chunkItems = chunks.map((chunk, i3) => ({ id: String(i3), content: budgetableContent(chunk) }));
   const { parts: parts2, manifest } = applyBudget(chunkItems, budget_tokens);
   const included = manifest.included.map((id) => chunks[Number(id)]);
   const fileRootUri = `file://${path4}`;
