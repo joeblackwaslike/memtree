@@ -4,4 +4,3 @@ native/
 *.db-wal
 *.db-shm
 edgelite-db/
-dbschema/edgelite.ts

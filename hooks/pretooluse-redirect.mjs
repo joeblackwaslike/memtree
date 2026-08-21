@@ -55,7 +55,7 @@ if (toolName === 'read') {
       : '';
     deny(
       `Use ctx_tree_read instead of Read for "${filePath}".`,
-      `Call: ctx_tree_read({ path: ${JSON.stringify(filePath)}${extra} })\n\nReturns identical content. Also symbol-chunks the file, stores nodes in the session graph, and returns nodeIds you can pass to ctx_tree_neighbors to find related code.`,
+      `Call: ctx_tree_read({ path: ${JSON.stringify(filePath)}${extra} })\n\nReturns content up to budget_tokens (default 2000), truncating large symbols to fit — pass a larger budget_tokens for more. Also symbol-chunks the file and stores nodes (full, untruncated content) for the chunks it returns, returning nodeIds you can pass to ctx_tree_neighbors to find related code.`,
     );
   }
 }
@@ -67,7 +67,7 @@ if (toolName === 'grep') {
   const pathArg = path ? `, path: ${JSON.stringify(path)}` : '';
   deny(
     `Use ctx_tree_grep instead of Grep.`,
-    `Call: ctx_tree_grep({ pattern: ${JSON.stringify(pattern)}${pathArg} })\n\nSame ripgrep results. Stores each match as a graph node so you can revisit via ctx_tree_search or ctx_tree_neighbors without re-running the search.`,
+    `Call: ctx_tree_grep({ pattern: ${JSON.stringify(pattern)}${pathArg} })\n\nReturns matches up to budget_tokens (default 2000) — pass a larger budget_tokens for more. Stores every match as a graph node so you can revisit via ctx_tree_search or ctx_tree_neighbors without re-running the search.`,
   );
 }
 
@@ -90,7 +90,7 @@ if (toolName === 'bash') {
     const searchPath = nonFlagArgs[1] ?? '.';
     deny(
       `Use ctx_tree_grep instead of ${cmdName}.`,
-      `Call: ctx_tree_grep({ pattern: ${JSON.stringify(pattern)}, path: ${JSON.stringify(searchPath)} })\n\nSame results, stored as graph nodes.`,
+      `Call: ctx_tree_grep({ pattern: ${JSON.stringify(pattern)}, path: ${JSON.stringify(searchPath)} })\n\nReturns matches up to budget_tokens (default 2000), stored as graph nodes.`,
     );
   }
 
@@ -99,7 +99,7 @@ if (toolName === 'bash') {
     if (filePath && CODE_EXTENSIONS.has(getExt(filePath))) {
       deny(
         `Use ctx_tree_read instead of ${cmdName} for "${filePath}".`,
-        `Call: ctx_tree_read({ path: ${JSON.stringify(filePath)} })\n\nReturns the file content and stores symbol-chunked nodes in the session graph.`,
+        `Call: ctx_tree_read({ path: ${JSON.stringify(filePath)} })\n\nReturns content up to budget_tokens (default 2000) and stores symbol-chunked nodes in the session graph.`,
       );
     }
   }
@@ -134,7 +134,7 @@ if (toolName === 'powershell') {
     const searchPath = pathIdx >= 0 ? (parts[pathIdx + 1] ?? '.') : '.';
     deny(
       `Use ctx_tree_grep instead of ${parts[0]}.`,
-      `Call: ctx_tree_grep({ pattern: ${JSON.stringify(pattern)}, path: ${JSON.stringify(searchPath)} })\n\nSame results, stored as graph nodes.`,
+      `Call: ctx_tree_grep({ pattern: ${JSON.stringify(pattern)}, path: ${JSON.stringify(searchPath)} })\n\nReturns matches up to budget_tokens (default 2000), stored as graph nodes.`,
     );
   }
 
@@ -143,7 +143,7 @@ if (toolName === 'powershell') {
     if (filePath && CODE_EXTENSIONS.has(getExt(filePath))) {
       deny(
         `Use ctx_tree_read instead of ${parts[0]} for "${filePath}".`,
-        `Call: ctx_tree_read({ path: ${JSON.stringify(filePath)} })\n\nReturns the file content and stores symbol-chunked nodes in the session graph.`,
+        `Call: ctx_tree_read({ path: ${JSON.stringify(filePath)} })\n\nReturns content up to budget_tokens (default 2000) and stores symbol-chunked nodes in the session graph.`,
       );
     }
   }

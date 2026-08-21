@@ -227,6 +227,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
           path: { type: 'string', description: 'Path to search within' },
           case_insensitive: { type: 'boolean', description: 'Case-insensitive search' },
           file_glob: { type: 'string', description: 'File glob filter' },
+          budget_tokens: { type: 'number', description: 'Token budget for output (default 2000)' },
         },
         required: ['pattern'],
       },
@@ -381,11 +382,12 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       }
 
       case 'ctx_tree_grep': {
-        const { pattern, path, case_insensitive, file_glob } = args as {
+        const { pattern, path, case_insensitive, file_glob, budget_tokens } = args as {
           pattern: string;
           path?: string;
           case_insensitive?: boolean;
           file_glob?: string;
+          budget_tokens?: number;
         };
         if (typeof pattern !== 'string') throw new McpError(ErrorCode.InvalidParams, '"pattern" is required and must be a string');
         if (!rgAvailable) throw new McpError(ErrorCode.InvalidParams, '`rg` (ripgrep) is not installed. Install via: brew install ripgrep');
@@ -394,6 +396,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           path,
           caseInsensitive: case_insensitive,
           fileGlob: file_glob,
+          budget_tokens,
         });
         return { content: [{ type: 'text', text: result.matches.join('\n') }] };
       }

@@ -6,6 +6,7 @@ import type { StoreBackend } from '../store/index.js';
 import type { CtxTreeConfig } from '../store/types.js';
 import { shouldDropPath } from '../redaction';
 import { McpError, ErrorCode } from '@modelcontextprotocol/sdk/types.js';
+import { applyBudget, type BudgetItem } from './budget.js';
 
 export interface ReadParams {
   path: string;
@@ -25,10 +26,6 @@ interface Chunk {
   endLine: number;
   content: string;
   symbolName: string;
-}
-
-function estimateTokens(text: string): number {
-  return Math.ceil(text.length / 4);
 }
 
 function windowChunk(lines: string[], windowSize = 200): Chunk[] {
@@ -151,6 +148,10 @@ export async function ctxTreeRead(
 ): Promise<ReadResult> {
   const { path, lines, budget_tokens = 2000 } = params;
 
+  if (budget_tokens <= 0) {
+    throw new McpError(ErrorCode.InvalidParams, `budget_tokens must be positive, got ${budget_tokens}`);
+  }
+
   if (shouldDropPath(path, config.capture.pathDenylistExtra ?? [])) {
     throw new Error(`Path rejected by denylist: ${path}`);
   }
@@ -193,23 +194,26 @@ export async function ctxTreeRead(
     chunking = 'window';
   }
 
+  let lineRange: { start1: number; end1: number } | undefined;
   if (lines) {
     // Schema advertises 0-based lines; internal chunks use 1-based line numbers.
-    const start1 = lines[0] + 1;
-    const end1 = lines[1] + 1;
-    chunks = chunks.filter(c => c.startLine <= end1 && c.endLine >= start1);
+    lineRange = { start1: lines[0] + 1, end1: lines[1] + 1 };
+    chunks = chunks.filter(c => c.startLine <= lineRange!.end1 && c.endLine >= lineRange!.start1);
   }
 
-  const budget = budget_tokens;
-  let used = 0;
-  const included: Chunk[] = [];
-  for (const [i, chunk] of chunks.entries()) {
-    const tokens = estimateTokens(chunk.content);
-    // Always include at least the first chunk so callers get some content.
-    if (i > 0 && used + tokens > budget) break;
-    included.push(chunk);
-    used += tokens;
+  // When a line range is requested, budget only the slice of each chunk that actually
+  // overlaps it — otherwise budget truncation (which always slices from the start of the
+  // text it's given) can cut a large chunk before ever reaching a late-lying requested range.
+  function budgetableContent(chunk: Chunk): string {
+    if (!lineRange) return chunk.content;
+    const from = Math.max(lineRange.start1, chunk.startLine);
+    const to = Math.min(lineRange.end1, chunk.endLine);
+    return chunk.content.split('\n').slice(from - chunk.startLine, to - chunk.startLine + 1).join('\n');
   }
+
+  const chunkItems: BudgetItem[] = chunks.map((chunk, i) => ({ id: String(i), content: budgetableContent(chunk) }));
+  const { parts, manifest } = applyBudget(chunkItems, budget_tokens);
+  const included: Chunk[] = manifest.included.map(id => chunks[Number(id)]);
 
   // Get or create the file root node (navigation anchor; parent of all per-chunk nodes).
   const fileRootUri = `file://${path}`;
@@ -272,7 +276,7 @@ export async function ctxTreeRead(
       mtime,
       truncated: truncated ? 1 : 0,
       original_bytes: originalBytes,
-      metadata: JSON.stringify({ filePath: path, chunking, symbolName: chunk.symbolName }),
+      metadata: JSON.stringify({ filePath: path, chunking, symbolName: chunk.symbolName, chunkCount: chunks.length }),
     });
 
     if (cached) await store.insertEdge({ src_id: nodeId, dst_id: cached.id, kind: 'supersedes' });
@@ -280,6 +284,6 @@ export async function ctxTreeRead(
     nodeIds.push(nodeId);
   }
 
-  const content = included.map(c => c.content).join('\n\n');
+  const content = parts.join('\n\n');
   return { nodeIds, content, truncated, chunking };
 }

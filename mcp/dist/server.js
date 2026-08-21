@@ -34718,10 +34718,56 @@ function shouldDropPath(filePath, extraGlobs = []) {
   return import_micromatch.default.isMatch(filePath, allGlobs) || import_micromatch.default.isMatch(basename, allGlobs);
 }
 
-// src/tools/read.ts
+// src/tools/budget.ts
 function estimateTokens(text) {
   return Math.ceil(text.length / 4);
 }
+var MIN_BUDGET_FOR_TRUNCATION = 50;
+function applyBudget(items, budgetTokens, format = "raw") {
+  let budget = budgetTokens;
+  const included = [];
+  const dropped = [];
+  const truncated = [];
+  const summary_substituted = [];
+  const parts2 = [];
+  for (const item of items) {
+    let text = format === "outline" && item.outline !== undefined ? item.outline : item.content;
+    const usesSummary = format === "mixed" && !!item.summary && item.summary.length < item.content.length;
+    if (usesSummary) {
+      text = item.summary;
+      summary_substituted.push(item.id);
+    }
+    const tokens = estimateTokens(text);
+    if (tokens > budget) {
+      if (budget < MIN_BUDGET_FOR_TRUNCATION) {
+        if (format === "mixed" && !item.summary) {
+          dropped.push({ id: item.id, reason: "over_budget_no_summary" });
+        } else {
+          dropped.push({ id: item.id, reason: "over_budget" });
+        }
+        continue;
+      }
+      const chars = budget * 4;
+      text = text.slice(0, chars);
+    }
+    budget -= estimateTokens(text);
+    included.push(item.id);
+    if (item.sourceTruncated)
+      truncated.push(item.id);
+    parts2.push(text);
+  }
+  return {
+    parts: parts2,
+    manifest: {
+      included,
+      dropped,
+      truncated,
+      ...summary_substituted.length ? { summary_substituted } : {}
+    }
+  };
+}
+
+// src/tools/read.ts
 function windowChunk(lines, windowSize = 200) {
   const chunks = [];
   for (let i3 = 0;i3 < lines.length; i3 += windowSize) {
@@ -34827,6 +34873,9 @@ async function treeSitterChunk(source, lang) {
 }
 async function ctxTreeRead(store, config2, params) {
   const { path: path4, lines, budget_tokens = 2000 } = params;
+  if (budget_tokens <= 0) {
+    throw new McpError(ErrorCode.InvalidParams, `budget_tokens must be positive, got ${budget_tokens}`);
+  }
   if (shouldDropPath(path4, config2.capture.pathDenylistExtra ?? [])) {
     throw new Error(`Path rejected by denylist: ${path4}`);
   }
@@ -34864,21 +34913,23 @@ async function ctxTreeRead(store, config2, params) {
 `));
     chunking = "window";
   }
+  let lineRange;
   if (lines) {
-    const start1 = lines[0] + 1;
-    const end1 = lines[1] + 1;
-    chunks = chunks.filter((c2) => c2.startLine <= end1 && c2.endLine >= start1);
+    lineRange = { start1: lines[0] + 1, end1: lines[1] + 1 };
+    chunks = chunks.filter((c2) => c2.startLine <= lineRange.end1 && c2.endLine >= lineRange.start1);
   }
-  const budget = budget_tokens;
-  let used = 0;
-  const included = [];
-  for (const [i3, chunk] of chunks.entries()) {
-    const tokens = estimateTokens(chunk.content);
-    if (i3 > 0 && used + tokens > budget)
-      break;
-    included.push(chunk);
-    used += tokens;
+  function budgetableContent(chunk) {
+    if (!lineRange)
+      return chunk.content;
+    const from = Math.max(lineRange.start1, chunk.startLine);
+    const to = Math.min(lineRange.end1, chunk.endLine);
+    return chunk.content.split(`
+`).slice(from - chunk.startLine, to - chunk.startLine + 1).join(`
+`);
   }
+  const chunkItems = chunks.map((chunk, i3) => ({ id: String(i3), content: budgetableContent(chunk) }));
+  const { parts: parts2, manifest } = applyBudget(chunkItems, budget_tokens);
+  const included = manifest.included.map((id) => chunks[Number(id)]);
   const fileRootUri = `file://${path4}`;
   let fileRootId;
   const cachedRoot = await store.getNodeBySourceUri(fileRootUri);
@@ -34934,13 +34985,13 @@ async function ctxTreeRead(store, config2, params) {
       mtime,
       truncated: truncated ? 1 : 0,
       original_bytes: originalBytes,
-      metadata: JSON.stringify({ filePath: path4, chunking, symbolName: chunk.symbolName })
+      metadata: JSON.stringify({ filePath: path4, chunking, symbolName: chunk.symbolName, chunkCount: chunks.length })
     });
     if (cached2)
       await store.insertEdge({ src_id: nodeId, dst_id: cached2.id, kind: "supersedes" });
     nodeIds.push(nodeId);
   }
-  const content = included.map((c2) => c2.content).join(`
+  const content = parts2.join(`
 
 `);
   return { nodeIds, content, truncated, chunking };
@@ -34950,7 +35001,10 @@ async function ctxTreeRead(store, config2, params) {
 import { spawnSync } from "child_process";
 import { createHash as createHash3 } from "crypto";
 async function ctxTreeGrep(store, config2, params) {
-  const { pattern, path: path4 = ".", caseInsensitive, fileGlob, maxCount = 500 } = params;
+  const { pattern, path: path4 = ".", caseInsensitive, fileGlob, maxCount = 500, budget_tokens = 2000 } = params;
+  if (budget_tokens <= 0) {
+    throw new McpError(ErrorCode.InvalidParams, `budget_tokens must be positive, got ${budget_tokens}`);
+  }
   const pathDenylistExtra = config2.capture.pathDenylistExtra ?? [];
   if (shouldDropPath(path4, pathDenylistExtra)) {
     throw new Error(`Path rejected by denylist: ${path4}`);
@@ -35043,13 +35097,11 @@ async function ctxTreeGrep(store, config2, params) {
       });
     }
   }
-  return { nodeId, matches };
+  const { parts: budgetedMatches } = applyBudget(matches.map((line, i3) => ({ id: String(i3), content: line })), budget_tokens);
+  return { nodeId, matches: budgetedMatches };
 }
 
 // src/tools/compose.ts
-function estimateTokens2(text) {
-  return Math.ceil(text.length / 4);
-}
 function scoreNode(node, graphDistance, queryRank, hasQuery) {
   const wDist = 0.7;
   const wRecency = 0.3;
@@ -35080,51 +35132,36 @@ async function ctxTreeCompose(store, params) {
     score: scoreNode(node, distanceMap.get(node.id) ?? 0, ftsRanks.get(node.id) ?? 0, !!query)
   }));
   scored.sort((a2, b4) => b4.score - a2.score);
-  let budget = budget_tokens;
-  const included = [];
-  const dropped = [];
-  const truncated = [];
-  const summary_substituted = [];
-  const parts2 = [];
+  const preDropped = [];
+  const items = [];
   for (const { node } of scored) {
     if (node.status === "superseded") {
-      dropped.push({ id: node.id, reason: "superseded" });
+      preDropped.push({ id: node.id, reason: "superseded" });
       continue;
     }
     if (node.status === "pruned") {
-      dropped.push({ id: node.id, reason: "pruned" });
+      preDropped.push({ id: node.id, reason: "pruned" });
       continue;
     }
-    let text = format === "outline" ? formatOutline(node) : node.content;
-    const usesSummary = format === "mixed" && node.summary && node.summary.length < node.content.length;
-    if (usesSummary) {
-      text = node.summary;
-      summary_substituted.push(node.id);
-    }
-    const tokens = estimateTokens2(text);
-    if (tokens > budget) {
-      if (budget < 50) {
-        if (format === "mixed" && !node.summary) {
-          dropped.push({ id: node.id, reason: "over_budget_no_summary" });
-        } else {
-          dropped.push({ id: node.id, reason: "over_budget" });
-        }
-        continue;
-      }
-      const chars = budget * 4;
-      text = text.slice(0, chars);
-    }
-    budget -= estimateTokens2(text);
-    included.push(node.id);
-    if (node.truncated === 1)
-      truncated.push(node.id);
-    parts2.push(text);
+    items.push({
+      id: node.id,
+      content: node.content,
+      summary: node.summary ?? undefined,
+      outline: format === "outline" ? formatOutline(node) : undefined,
+      sourceTruncated: node.truncated === 1
+    });
   }
+  const { parts: parts2, manifest } = applyBudget(items, budget_tokens, format);
   return {
     content: parts2.join(`
 
 `),
-    manifest: { included, dropped, truncated, ...summary_substituted.length ? { summary_substituted } : {} }
+    manifest: {
+      included: manifest.included,
+      dropped: [...preDropped, ...manifest.dropped],
+      truncated: manifest.truncated,
+      ...manifest.summary_substituted ? { summary_substituted: manifest.summary_substituted } : {}
+    }
   };
 }
 
@@ -35165,7 +35202,7 @@ function stripTags(s4) {
 function decodeEntities(s4) {
   return s4.replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&nbsp;/g, " ").replace(/&#(\d+);/g, (_3, n4) => String.fromCharCode(Number(n4)));
 }
-function estimateTokens3(text) {
+function estimateTokens2(text) {
   return Math.ceil(text.length / 4);
 }
 var CACHE_TTL_MS = 60 * 60 * 1000;
@@ -35249,7 +35286,7 @@ async function ctxTreeBrowse(store, _config, params) {
   return { nodeId, url, title, description, headings, content, truncated, cached: false };
 }
 function budgetContent(text, budget) {
-  if (estimateTokens3(text) <= budget)
+  if (estimateTokens2(text) <= budget)
     return { text, truncated: false };
   const charBudget = budget * 4;
   return { text: text.slice(0, charBudget), truncated: true };
@@ -43822,7 +43859,8 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
           pattern: { type: "string", description: "Regex pattern to search" },
           path: { type: "string", description: "Path to search within" },
           case_insensitive: { type: "boolean", description: "Case-insensitive search" },
-          file_glob: { type: "string", description: "File glob filter" }
+          file_glob: { type: "string", description: "File glob filter" },
+          budget_tokens: { type: "number", description: "Token budget for output (default 2000)" }
         },
         required: ["pattern"]
       }
@@ -43953,7 +43991,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         return { content: [{ type: "text", text: result.content }] };
       }
       case "ctx_tree_grep": {
-        const { pattern, path: path9, case_insensitive, file_glob } = args2;
+        const { pattern, path: path9, case_insensitive, file_glob, budget_tokens } = args2;
         if (typeof pattern !== "string")
           throw new McpError(ErrorCode.InvalidParams, '"pattern" is required and must be a string');
         if (!rgAvailable)
@@ -43962,7 +44000,8 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           pattern,
           path: path9,
           caseInsensitive: case_insensitive,
-          fileGlob: file_glob
+          fileGlob: file_glob,
+          budget_tokens
         });
         return { content: [{ type: "text", text: result.matches.join(`
 `) }] };

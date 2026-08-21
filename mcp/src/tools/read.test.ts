@@ -98,6 +98,17 @@ describe('ctxTreeRead', () => {
     expect(result.content).not.toContain('BLOCK_A');
   });
 
+  test('returns the requested line range even when it falls late inside an oversized chunk under a tight budget', async () => {
+    const filePath = join(FIXTURE_DIR, 'big-class-ranged.ts');
+    const methods = Array.from({ length: 60 }, (_, i) => `  method${i}() { return ${i}; }`).join('\n');
+    writeFileSync(filePath, `export class Big3 {\n${methods}\n}\n`);
+    // 0-based line 60 is "  method59() { return 59; }" — deep inside the single oversized
+    // export_statement chunk. A budget this small only fits a handful of lines from wherever
+    // budgeting starts, so this fails if truncation still slices from the chunk's beginning.
+    const result = await ctxTreeRead(store, cfg, { path: filePath, lines: [60, 60], budget_tokens: 50 });
+    expect(result.content).toContain('method59');
+  });
+
   test('falls back to window chunking for unknown file type', async () => {
     const filePath = join(FIXTURE_DIR, 'data.xyz');
     writeFileSync(filePath, Array(210).fill('x').join('\n'));
@@ -154,5 +165,32 @@ export class Greeter {
     const meta = JSON.parse(nodeRow.metadata);
     expect(meta.chunking).toBe('treesitter');
     expect(meta.chunkCount).toBeGreaterThan(1);
+  });
+
+  test('caps returned content within budget_tokens even for a single oversized chunk', async () => {
+    const filePath = join(FIXTURE_DIR, 'big-class.ts');
+    const methods = Array.from({ length: 60 }, (_, i) => `  method${i}() { return ${i}; }`).join('\n');
+    writeFileSync(filePath, `export class Big {\n${methods}\n}\n`);
+    const result = await ctxTreeRead(store, cfg, { path: filePath, budget_tokens: 100 });
+    expect(result.content.length).toBeLessThanOrEqual(100 * 4);
+  });
+
+  test('stores full chunk content in the graph even when the returned excerpt is truncated', async () => {
+    const filePath = join(FIXTURE_DIR, 'big-class-2.ts');
+    const methods = Array.from({ length: 60 }, (_, i) => `  method${i}() { return ${i}; }`).join('\n');
+    const fullSource = `export class Big2 {\n${methods}\n}\n`;
+    writeFileSync(filePath, fullSource);
+    await ctxTreeRead(store, cfg, { path: filePath, budget_tokens: 100 });
+    const stored = db.query(
+      "SELECT content FROM nodes WHERE kind='file_chunk' AND json_extract(metadata,'$.is_file_root') IS NULL LIMIT 1"
+    ).get() as { content: string };
+    expect(stored.content.length).toBeGreaterThan(100 * 4);
+  });
+
+  test('rejects non-positive budget_tokens', async () => {
+    const filePath = join(FIXTURE_DIR, 'any.ts');
+    writeFileSync(filePath, 'export const x = 1;\n');
+    await expect(ctxTreeRead(store, cfg, { path: filePath, budget_tokens: 0 }))
+      .rejects.toThrow('budget_tokens must be positive');
   });
 });

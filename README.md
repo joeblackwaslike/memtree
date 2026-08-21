@@ -88,6 +88,13 @@ Keep going.
 | WebFetch | ~11,000 tok | ~110 tok | **99.0%** |
 | MCP tool | ~3,600 tok | ~70 tok | **98.1%** |
 
+> **Read/Grep note:** these per-operation numbers describe *revisiting* already-captured content
+> via `ctx_tree_compose`/`neighbors`/`search`. First-time reads of a file or search results are
+> budget-limited (default 2000 tokens) as of this commit, not pre-truncated to these exact figures
+> — see
+> [`docs/postmortems/2026-08-18-read-grep-token-regression.md`](docs/postmortems/2026-08-18-read-grep-token-regression.md)
+> for the full investigation and fix.
+
 ---
 
 ## Install

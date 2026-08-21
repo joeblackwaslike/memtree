@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'bun:test';
+import { realpathSync } from 'node:fs';
 import { Database } from 'bun:sqlite';
 import { openDb } from '../store/db';
 import { ctxTreeMonitor } from './monitor';
@@ -80,6 +81,6 @@ describe('ctxTreeMonitor', () => {
       command: 'pwd',
       cwd: '/tmp',
     });
-    expect(result.preview.trim()).toBe('/private/tmp');
+    expect(result.preview.trim()).toBe(realpathSync('/tmp'));
   });
 });

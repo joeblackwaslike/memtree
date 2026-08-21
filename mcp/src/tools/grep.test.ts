@@ -71,4 +71,28 @@ describe('ctxTreeGrep', () => {
     const node = db.query("SELECT content FROM nodes WHERE kind = 'tool_output' LIMIT 1").get() as { content: string } | null;
     if (node) expect(node.content).not.toContain('supersecret');
   });
+
+  test('caps returned matches to budget_tokens', async () => {
+    const bigFile = join(FIXTURE_DIR, 'many.ts');
+    const lines = Array.from(
+      { length: 200 },
+      (_, i) => `const marker_${i} = "padding to make this matched line long enough to matter";`,
+    ).join('\n');
+    writeFileSync(bigFile, lines);
+    const result = await ctxTreeGrep(store, DEFAULT_CONFIG, {
+      pattern: 'marker_',
+      path: FIXTURE_DIR,
+      budget_tokens: 50,
+    });
+    const approxTokens = Math.ceil(result.matches.join('\n').length / 4);
+    expect(approxTokens).toBeLessThanOrEqual(60);
+  });
+
+  test('rejects non-positive budget_tokens', async () => {
+    await expect(ctxTreeGrep(store, DEFAULT_CONFIG, {
+      pattern: 'doThing',
+      path: FIXTURE_DIR,
+      budget_tokens: 0,
+    })).rejects.toThrow('budget_tokens must be positive');
+  });
 });

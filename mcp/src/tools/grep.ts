@@ -1,10 +1,12 @@
 import { spawnSync } from 'child_process';
 import { createHash } from 'crypto';
 import { ulid } from 'ulid';
+import { McpError, ErrorCode } from '@modelcontextprotocol/sdk/types.js';
 import type { StoreBackend } from '../store/index.js';
 import type { CtxTreeConfig } from '../store/types.js';
 import { shouldDropPath } from '../redaction';
 import { DEFAULT_PATH_DENY_GLOBS } from '../redaction/paths';
+import { applyBudget } from './budget.js';
 
 export interface GrepParams {
   pattern: string;
@@ -12,6 +14,7 @@ export interface GrepParams {
   caseInsensitive?: boolean;
   fileGlob?: string;
   maxCount?: number;
+  budget_tokens?: number;
 }
 
 export interface GrepResult {
@@ -24,7 +27,12 @@ export async function ctxTreeGrep(
   config: CtxTreeConfig,
   params: GrepParams
 ): Promise<GrepResult> {
-  const { pattern, path = '.', caseInsensitive, fileGlob, maxCount = 500 } = params;
+  const { pattern, path = '.', caseInsensitive, fileGlob, maxCount = 500, budget_tokens = 2000 } = params;
+
+  if (budget_tokens <= 0) {
+    throw new McpError(ErrorCode.InvalidParams, `budget_tokens must be positive, got ${budget_tokens}`);
+  }
+
   const pathDenylistExtra = config.capture.pathDenylistExtra ?? [];
 
   if (shouldDropPath(path, pathDenylistExtra)) {
@@ -122,5 +130,10 @@ export async function ctxTreeGrep(
     }
   }
 
-  return { nodeId, matches };
+  const { parts: budgetedMatches } = applyBudget(
+    matches.map((line, i) => ({ id: String(i), content: line })),
+    budget_tokens,
+  );
+
+  return { nodeId, matches: budgetedMatches };
 }
