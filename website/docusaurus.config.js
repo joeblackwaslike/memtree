@@ -71,16 +71,14 @@ const config = {
             label: 'Docs',
           },
           {
-            href: '/how-it-works.html',
+            href: 'pathname:///ctx-tree/how-it-works.html',
             label: 'How It Works',
             position: 'left',
-            prependBaseUrlToHref: true,
           },
           {
-            href: '/mini.html',
+            href: 'pathname:///ctx-tree/mini.html',
             label: 'Quick Overview',
             position: 'left',
-            prependBaseUrlToHref: true,
           },
           {
             href: 'https://github.com/joeblackwaslike/ctx-tree',
@@ -103,8 +101,8 @@ const config = {
           {
             title: 'Visualizations',
             items: [
-              { label: 'How It Works', href: '/how-it-works.html', prependBaseUrlToHref: true },
-              { label: 'Quick Overview', href: '/mini.html', prependBaseUrlToHref: true },
+              { label: 'How It Works', href: 'pathname:///ctx-tree/how-it-works.html' },
+              { label: 'Quick Overview', href: 'pathname:///ctx-tree/mini.html' },
             ],
           },
           {
